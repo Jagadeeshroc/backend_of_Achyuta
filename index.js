@@ -1,5 +1,6 @@
 const express = require('express');
-const path = require('path');
+const path = require(
+    'path');
 const { open } = require('sqlite');
 const sqlite3 = require('sqlite3');
 const bcrypt = require('bcrypt');
@@ -470,78 +471,61 @@ app.get('/users/:userId/jobs', async (req, res) => {
 
 
 // In your server.js, modify the reviews endpoint to add better error logging:
-app.post('/jobs/:id/reviews', authenticate, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { content, rating } = req.body;
-        const user_id = req.user.id; // Get from authenticated user
-        
-        console.log(`Adding review to job ${id} by user ${user_id}`); // Debug log
 
-        // Validation
+// POST a new review
+app.post('/jobs/:jobId/reviews', authenticate, async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const { content, rating } = req.body;
+        const userId = req.user.id;
+
+        // Validate input
         if (!content || !rating) {
             return res.status(400).json({ error: 'Content and rating are required' });
         }
+
         if (rating < 1 || rating > 5) {
             return res.status(400).json({ error: 'Rating must be between 1 and 5' });
         }
-        if (content.length < 10) {
-            return res.status(400).json({ error: 'Review must be at least 10 characters' });
-        }
 
-        // Verify job exists
-        const job = await db.get('SELECT id FROM jobs WHERE id = ?', [id]);
+        // Check if job exists
+        const job = await db.get('SELECT id FROM jobs WHERE id = ?', [jobId]);
         if (!job) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
-        // Insert review
+        // Insert new review
         const result = await db.run(
-            `INSERT INTO reviews (content, rating, job_id, user_id)
-             VALUES (?, ?, ?, ?)`,
-            [content, rating, id, user_id]
+            `INSERT INTO reviews (content, rating, job_id, user_id) 
+            VALUES (?, ?, ?, ?)`,
+            [content, rating, jobId, userId]
         );
 
-        // Get the full review with user details
-        const newReview = await db.get(`
-            SELECT 
-                r.id,
-                r.content,
-                r.rating,
-                r.created_at,
-                u.username as user_name,
-                u.id as user_id
-            FROM reviews r
-            JOIN users u ON r.user_id = u.id
-            WHERE r.id = ?
-        `, [result.lastID]);
-
-        console.log('Successfully added review:', newReview); // Debug log
-        res.status(201).json(newReview);
-    } catch (error) {
-        console.error('Detailed Add Review Error:', {
-            message: error.message,
-            stack: error.stack,
-            params: req.params,
-            body: req.body
+        res.status(201).json({
+            success: true,
+            message: 'Review added successfully',
+            reviewId: result.lastID
         });
+    } catch (error) {
+        console.error('Add Review Error:', error);
         res.status(500).json({ 
-            error: 'Failed to add review',
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            error: 'Internal Server Error',
+            details: error.message
         });
     }
 });
 
-// Update the reviews GET endpoint
-app.get('/jobs/:id/reviews', async (req, res) => {
+// GET reviews for a job
+
+app.get('/jobs/:jobId/reviews', async (req, res) => {
     try {
-        const { id } = req.params;
-        console.log(`Fetching reviews for job ID: ${id}`);
-        
-        // First verify job exists
-        const jobExists = await db.get('SELECT id FROM jobs WHERE id = ?', [id]);
-        if (!jobExists) {
-            return res.status(404).json({ error: 'Job not found' });
+        const { jobId } = req.params;
+        const job = await db.get('SELECT id FROM jobs WHERE id = ?', [jobId]);
+        if (!job) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Job not found' 
+            });
         }
 
         const reviews = await db.all(`
@@ -550,28 +534,28 @@ app.get('/jobs/:id/reviews', async (req, res) => {
                 r.content,
                 r.rating,
                 r.created_at,
-                u.username as user_name,
-                u.id as user_id
+                u.id as user_id,
+                u.username as user_username
             FROM reviews r
             JOIN users u ON r.user_id = u.id
             WHERE r.job_id = ?
             ORDER BY r.created_at DESC
-        `, [id]);
+        `, [jobId]);
 
-        console.log(`Found ${reviews.length} reviews for job ${id}`);
-        res.json(reviews);
-    } catch (error) {
-        console.error('Detailed Get Reviews Error:', {
-            message: error.message,
-            stack: error.stack,
-            params: req.params
+        res.json({
+            success: true,
+            reviews: reviews
         });
+    } catch (error) {
+        console.error('Get Reviews Error:', error);
         res.status(500).json({ 
-            error: 'Failed to fetch reviews',
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            success: false,
+            error: 'Internal Server Error',
+            details: error.message
         });
     }
 });
+
 // Start Server
 
 
